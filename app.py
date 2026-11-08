@@ -1,24 +1,26 @@
 import pandas as pd
 import streamlit as st
-from sklearn.ensemble import RandomForestRegressor
+from sklearn.cluster import KMeans
 from sklearn.linear_model import LinearRegression
 
 # Cấu hình giao diện trang web
 st.set_page_config(
-    page_title="Dự đoán Giá Nhà - Nhóm 4", page_icon="🏠", layout="centered"
+    page_title="Phân tích & Dự đoán Giá Nhà - Nhóm 4",
+    page_icon="🏠",
+    layout="centered",
 )
 
-st.title("🏠 Ứng Dụng Dự Đoán Giá Nhà")
+st.title("🏠 Ứng Dụng Phân Tích & Dự Đoán Giá Nhà")
 st.write(
-    "Nhập các thông số kỹ thuật của ngôi nhà để hệ thống dự đoán mức giá bán"
-    " phù hợp dựa trên dữ liệu lịch sử."
+    "Nhập các thông số kỹ thuật của ngôi nhà để hệ thống dự đoán bằng Hồi quy"
+    " tuyến tính hoặc phân nhóm bằng K-Means."
 )
 
 # Sidebar cho phép chọn mô hình
 st.sidebar.header("⚙️ Cấu hình mô hình")
 model_choice = st.sidebar.selectbox(
-    "Chọn thuật toán dự đoán:",
-    ["Hồi quy tuyến tính (Linear Regression)", "Random Forest"],
+    "Chọn thuật toán:",
+    ["Hồi quy tuyến tính (Linear Regression)", "K-Means (Phân cụm nhà)"],
 )
 
 
@@ -41,18 +43,26 @@ def load_and_train_model(choice):
   X = data_model[features]
   y = data_model[target]
 
-  # Lựa chọn mô hình theo yêu cầu
   if choice == "Hồi quy tuyến tính (Linear Regression)":
     model = LinearRegression()
+    model.fit(X, y)
+    return "regression", model, df
   else:
-    model = RandomForestRegressor(n_estimators=100, random_state=42)
-
-  model.fit(X, y)
-  return model, df
+    # Huấn luyện mô hình K-Means phân thành 3 cụm (nhóm giá nhà)
+    model = KMeans(n_clusters=3, random_state=42, n_init=10)
+    model.fit(X)
+    data_model["Cluster"] = model.labels_
+    cluster_prices = data_model.groupby("Cluster")[target].mean().to_dict()
+    return "kmeans", model, df, cluster_prices
 
 
 try:
-  model, df_raw = load_and_train_model(model_choice)
+  if model_choice == "Hồi quy tuyến tính (Linear Regression)":
+    model_type, model, df_raw = load_and_train_model(model_choice)
+  else:
+    model_type, model, df_raw, cluster_prices = load_and_train_model(
+        model_choice
+    )
 except Exception as e:
   st.error(
       f"Lỗi khi đọc file dữ liệu 'Nhom4_gia_nha.xlsx': {e}. Hãy chắc chắn file"
@@ -118,13 +128,23 @@ input_df = user_input_features()
 st.subheader("📋 Thông số ngôi nhà bạn chọn:")
 st.dataframe(input_df)
 
-# Nút dự đoán
-if st.button("🚀 Dự đoán Giá Nhà", type="primary"):
-  prediction = model.predict(input_df)[0]
-  st.success(
-      f"💰 Giá nhà dự kiến ước tính: **${prediction:,.2f} USD** (khoảng"
-      f" {(prediction * 25400):,.0f} VNĐ)"
-  )
+# Nút xử lý kết quả
+if st.button("🚀 Thực hiện Phân tích", type="primary"):
+  if model_choice == "Hồi quy tuyến tính (Linear Regression)":
+    prediction = model.predict(input_df)[0]
+    st.success(
+        f"💰 Giá nhà dự kiến ước tính: **${prediction:,.2f} USD** (khoảng"
+        f" {(prediction * 25400):,.0f} VNĐ)"
+    )
+  else:
+    cluster_id = model.predict(input_df)[0]
+    avg_price = cluster_prices.get(cluster_id, 0)
+    st.success(
+        f"🔍 Ngôi nhà này thuộc về **Phân khúc Cụm số {cluster_id + 1}**"
+        f" (K-Means).<br>📊 Mức giá trung bình của phân khúc này là:"
+        f" **${avg_price:,.2f} USD** (khoảng {(avg_price * 25400):,.0f} VNĐ)",
+        icon="📊",
+    )
 
 st.markdown("---")
-st.info(f"💡 Ứng dụng hiện đang sử dụng mô hình: **{model_choice}**.")
+st.info(f"💡 Ứng dụng hiện đang sử dụng thuật toán: **{model_choice}**.")
