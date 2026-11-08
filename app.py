@@ -139,11 +139,15 @@ if st.button("🚀 Thực hiện Phân tích", type="primary"):
   else:
     cluster_id = model.predict(input_df)[0]
     avg_price = cluster_prices.get(cluster_id, 0)
-    st.success(
-        f"🔍 Ngôi nhà này thuộc về **Phân khúc Cụm số {cluster_id + 1}**"
-        f" (K-Means).<br>📊 Mức giá trung bình của phân khúc này là:"
-        f" **${avg_price:,.2f} USD** (khoảng {(avg_price * 25400):,.0f} VNĐ)",
-        icon="📊",
+    # Hiển thị kết quả K-Means cực đẹp và sạch sẽ, không bị lỗi thẻ HTML
+    st.markdown(
+        f"""
+        <div style="padding: 15px; background-color: #d4edda; border-radius: 5px; color: #155724; border: 1px solid #c3e6cb;">
+            <b>🔍 Ngôi nhà này thuộc về Phân khúc Cụm số {cluster_id + 1} (K-Means).</b><br>
+            📊 <b>Mức giá trung bình của phân khúc này là:</b> ${avg_price:,.2f} USD (khoảng {(avg_price * 25400):,.0f} VNĐ)
+        </div>
+        """,
+        unsafe_allow_html=True,
     )
 
 st.markdown("---")
