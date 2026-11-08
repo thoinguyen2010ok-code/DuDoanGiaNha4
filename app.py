@@ -12,8 +12,8 @@ st.set_page_config(
 
 st.title("🏠 Ứng Dụng Phân Tích & Dự Đoán Giá Nhà")
 st.write(
-    "Nhập các thông số kỹ thuật của ngôi nhà để hệ thống dự đoán bằng Hồi quy"
-    " tuyến tính hoặc phân nhóm bằng K-Means."
+    "Thay đổi thông số ở thanh bên trái để xem kết quả cập nhật tự động ngay"
+    " lập tức."
 )
 
 # Sidebar cho phép chọn mô hình
@@ -24,9 +24,9 @@ model_choice = st.sidebar.selectbox(
 )
 
 
-# Hàm tải dữ liệu và huấn luyện mô hình tương ứng
+# Hàm tải dữ liệu và huấn luyện mô hình
 @st.cache_resource
-def load_and_train_model(choice):
+def load_and_train_model():
   df = pd.read_excel("Nhom4_gia_nha.xlsx")
 
   features = [
@@ -43,26 +43,23 @@ def load_and_train_model(choice):
   X = data_model[features]
   y = data_model[target]
 
-  if choice == "Hồi quy tuyến tính (Linear Regression)":
-    model = LinearRegression()
-    model.fit(X, y)
-    return "regression", model, df
-  else:
-    # Huấn luyện mô hình K-Means phân thành 3 cụm (nhóm giá nhà)
-    model = KMeans(n_clusters=3, random_state=42, n_init=10)
-    model.fit(X)
-    data_model["Cluster"] = model.labels_
-    cluster_prices = data_model.groupby("Cluster")[target].mean().to_dict()
-    return "kmeans", model, df, cluster_prices
+  # Huấn luyện Linear Regression
+  lr_model = LinearRegression()
+  lr_model.fit(X, y)
+
+  # Huấn luyện K-Means (3 cụm)
+  kmeans_model = KMeans(n_clusters=3, random_state=42, n_init=10)
+  kmeans_model.fit(X)
+  data_model["Cluster"] = kmeans_model.labels_
+  cluster_prices = data_model.groupby("Cluster")[target].mean().to_dict()
+
+  return df, lr_model, kmeans_model, cluster_prices, features
 
 
 try:
-  if model_choice == "Hồi quy tuyến tính (Linear Regression)":
-    model_type, model, df_raw = load_and_train_model(model_choice)
-  else:
-    model_type, model, df_raw, cluster_prices = load_and_train_model(
-        model_choice
-    )
+  df_raw, lr_model, kmeans_model, cluster_prices, features = (
+      load_and_train_model()
+  )
 except Exception as e:
   st.error(
       f"Lỗi khi đọc file dữ liệu 'Nhom4_gia_nha.xlsx': {e}. Hãy chắc chắn file"
@@ -73,7 +70,7 @@ except Exception as e:
 st.sidebar.header("🏠 Thông số nhập vào nhà")
 
 
-# Tạo thanh trượt nhập thông số
+# Tạo thanh trượt nhập thông số (Tự động cập nhật realtime)
 def user_input_features():
   overall_qual = st.sidebar.slider(
       "Chất lượng tổng thể (OverallQual - Thang 1-10)",
@@ -128,27 +125,34 @@ input_df = user_input_features()
 st.subheader("📋 Thông số ngôi nhà bạn chọn:")
 st.dataframe(input_df)
 
-# Nút xử lý kết quả
-if st.button("🚀 Thực hiện Phân tích", type="primary"):
-  if model_choice == "Hồi quy tuyến tính (Linear Regression)":
-    prediction = model.predict(input_df)[0]
-    st.success(
-        f"💰 Giá nhà dự kiến ước tính: **${prediction:,.2f} USD** (khoảng"
-        f" {(prediction * 25400):,.0f} VNĐ)"
-    )
-  else:
-    cluster_id = model.predict(input_df)[0]
-    avg_price = cluster_prices.get(cluster_id, 0)
-    # Hiển thị kết quả K-Means cực đẹp và sạch sẽ, không bị lỗi thẻ HTML
-    st.markdown(
-        f"""
+st.markdown("---")
+st.subheader("📊 Kết quả phân tích tự động:")
+
+# Xử lý hiển thị kết quả ngay lập tức mà không cần bấm nút
+if model_choice == "Hồi quy tuyến tính (Linear Regression)":
+  prediction = lr_model.predict(input_df)[0]
+  st.success(
+      f"💰 **Giá nhà dự kiến ước tính (Linear Regression):**"
+      f" **${prediction:,.2f} USD** (khoảng {(prediction * 25400):,.0f} VNĐ)"
+  )
+else:
+  cluster_id = kmeans_model.predict(input_df)[0]
+  avg_price = cluster_prices.get(cluster_id, 0)
+
+  # Tính khoảng cách đến các tâm cụm để thấy sự dao động khi đổi thông số
+  distances = kmeans_model.transform(input_df)[0]
+  current_distance = distances[cluster_id]
+
+  st.markdown(
+      f"""
         <div style="padding: 15px; background-color: #d4edda; border-radius: 5px; color: #155724; border: 1px solid #c3e6cb;">
-            <b>🔍 Ngôi nhà này thuộc về Phân khúc Cụm số {cluster_id + 1} (K-Means).</b><br>
-            📊 <b>Mức giá trung bình của phân khúc này là:</b> ${avg_price:,.2f} USD (khoảng {(avg_price * 25400):,.0f} VNĐ)
+            <b>🔍 Phân khúc phân nhóm: Cụm số {cluster_id + 1} (K-Means)</b><br>
+            📊 <b>Mức giá trung bình của phân khúc này:</b> ${avg_price:,.2f} USD (khoảng {(avg_price * 25400):,.0f} VNĐ)<br>
+            📐 <i>Khoảng cách tâm cụm (Distance): {current_distance:.2f} (Thay đổi diện tích/chất lượng lớn sẽ làm đổi cụm hoặc thay đổi khoảng cách này)</i>
         </div>
         """,
-        unsafe_allow_html=True,
-    )
+      unsafe_allow_html=True,
+  )
 
 st.markdown("---")
-st.info(f"💡 Ứng dụng hiện đang sử dụng thuật toán: **{model_choice}**.")
+st.info(f"💡 Thuật toán đang hoạt động: **{model_choice}**.")
